@@ -189,25 +189,25 @@ class DecoratorExtractor {
      * @returns {Array<Object>} - the array of collected dcs objects with the current dcs
      * @private
      */
-    parseNonVocabularyDecorators(dcsObjects, dcs, DCS_VERSION, target){
-        const decotatorObj = {
+    static parseNonVocabularyDecorators(dcsObjects, dcs, DCS_VERSION, target) {
+        // Create decorator object
+        const decoratorObj = {
             '$class': 'concerto.metamodel@1.0.0.Decorator',
             'name': dcs.name,
         };
-        if (dcs.arguments){
-            const args = dcs.arguments.map((arg)=>{
-                return {
-                    '$class':arg.$class,
-                    'value':arg.value
-                };
-            });
-            decotatorObj.arguments = args;
+        if (dcs.arguments) {
+            decoratorObj.arguments = dcs.arguments.map((arg) => ({
+                '$class': arg.$class,
+                'value': arg.value
+            }));
         }
-        let dcsObject = {
+
+        // Create new command
+        const dcsObject = {
             '$class': `org.accordproject.decoratorcommands@${DCS_VERSION}.Command`,
             'type': 'UPSERT',
             'target': target,
-            'decorator': decotatorObj,
+            'decorator': decoratorObj // Use single decorator for backward compatibility
         };
         dcsObjects.push(dcsObject);
         return dcsObjects;
@@ -275,7 +275,7 @@ class DecoratorExtractor {
                 decos.forEach(dcs =>{
                     const isVocab = this.isVocabDecorator(dcs.name);
                     if (!isVocab && this.action !== DecoratorExtractor.Action.EXTRACT_VOCAB){
-                        dcsObjects = this.parseNonVocabularyDecorators(dcsObjects, dcs, this.dcs_version, target);
+                        dcsObjects = DecoratorExtractor.parseNonVocabularyDecorators(dcsObjects, dcs, this.dcs_version, target);
                     }
                     if (isVocab && this.action !== DecoratorExtractor.Action.EXTRACT_NON_VOCAB){
                         vocabObject = this.parseVocabularies(vocabObject, obj, dcs);

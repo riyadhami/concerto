@@ -81,7 +81,8 @@ enum MapElement {
  */
 concept Command {
     o CommandTarget target
-    o Decorator decorator
+    o Decorator decorator optional // for backward compatibility
+    o Decorator[] decorators optional // new field for multiple decorators
     o CommandType type
     o String decoratorNamespace optional
 }
@@ -650,30 +651,34 @@ class DecoratorManager {
      * Applies a decorator to a decorated model element.
      * @param {*} decorated the type to apply the decorator to
      * @param {string} type the command type
-     * @param {*} newDecorator the decorator to add
+     * @param {*} newDecorator the decorator or array of decorators to add
      */
     static applyDecorator(decorated, type, newDecorator) {
+        // Handle array of decorators
+        const decorators = Array.isArray(newDecorator) ? newDecorator : [newDecorator];
+
+        if (!decorated.decorators) {
+            decorated.decorators = [];
+        }
+
         if (type === 'UPSERT') {
-            let updated = false;
-            if (decorated.decorators) {
+            for (const decorator of decorators) {
+                if (!decorator) { continue; } // Skip undefined/null decorators
+                let updated = false;
                 for (let n = 0; n < decorated.decorators.length; n++) {
-                    let decorator = decorated.decorators[n];
-                    if (decorator.name === newDecorator.name) {
-                        decorated.decorators[n] = newDecorator;
+                    if (decorated.decorators[n].name === decorator.name) {
+                        decorated.decorators[n] = decorator;
                         updated = true;
+                        break;
                     }
                 }
-            }
 
-            if (!updated) {
-                decorated.decorators
-                    ? decorated.decorators.push(newDecorator)
-                    : (decorated.decorators = [newDecorator]);
+                if (!updated) {
+                    decorated.decorators.push(decorator);
+                }
             }
         } else if (type === 'APPEND') {
-            decorated.decorators
-                ? decorated.decorators.push(newDecorator)
-                : (decorated.decorators = [newDecorator]);
+            decorated.decorators.push(...decorators.filter(d => d)); // Filter out undefined/null
         } else {
             throw new Error(`Unknown command type ${type}`);
         }
@@ -705,38 +710,40 @@ class DecoratorManager {
      * @param {*} [property] the property of a declaration, optional, to be passed if the command is for a property
      * @param {object} [options] - execute command options
      * @param {boolean} [options.enableDcsNamespaceTarget] - flag to control applying namespace targeted decorators on top of the namespace instead of all declarations in that namespace
-     * org.accordproject.decoratorcommands model
      */
     static executeCommand(namespace, declaration, command, property, options) {
-        const { target, decorator, type } = command;
-        const { name } = ModelUtil.parseNamespace( namespace );
+        const { target, decorator, decorators, type } = command;
+        const { name } = ModelUtil.parseNamespace(namespace);
+
+        // Use decorators array if present, otherwise use single decorator
+        const decoratorsToApply = decorators || decorator;
+
         if (this.falsyOrEqual(target.namespace, [namespace,name]) &&
             this.falsyOrEqual(target.declaration, [declaration.name])) {
-
             if (declaration.$class === `${MetaModelNamespace}.MapDeclaration`) {
                 if (target.mapElement) {
                     switch (target.mapElement) {
                     case 'KEY':
                     case 'VALUE':
-                        this.applyDecoratorForMapElement(target.mapElement, target, declaration, type, decorator);
+                        this.applyDecoratorForMapElement(target.mapElement, target, declaration, type, decoratorsToApply);
                         break;
                     case 'KEY_VALUE':
-                        this.applyDecoratorForMapElement('KEY', target, declaration, type, decorator);
-                        this.applyDecoratorForMapElement('VALUE', target, declaration, type, decorator);
+                        this.applyDecoratorForMapElement('KEY', target, declaration, type, decoratorsToApply);
+                        this.applyDecoratorForMapElement('VALUE', target, declaration, type, decoratorsToApply);
                         break;
                     }
                 } else if (target.type) {
                     if (this.falsyOrEqual(target.type, declaration.key.$class)) {
-                        this.applyDecorator(declaration.key, type, decorator);
+                        this.applyDecorator(declaration.key, type, decoratorsToApply);
                     }
                     if (this.falsyOrEqual(target.type, declaration.value.$class)) {
-                        this.applyDecorator(declaration.value, type, decorator);
+                        this.applyDecorator(declaration.value, type, decoratorsToApply);
                     }
                 } else {
-                    this.checkForNamespaceTargetAndApplyDecorator(declaration, type, decorator, target, options?.enableDcsNamespaceTarget);
+                    this.checkForNamespaceTargetAndApplyDecorator(declaration, type, decoratorsToApply, target, options?.enableDcsNamespaceTarget);
                 }
             } else if (!(target.property || target.properties || target.type)) {
-                this.checkForNamespaceTargetAndApplyDecorator(declaration, type, decorator, target, options?.enableDcsNamespaceTarget);
+                this.checkForNamespaceTargetAndApplyDecorator(declaration, type, decoratorsToApply, target, options?.enableDcsNamespaceTarget);
             } else {
                 if(property) {
                     this.executePropertyCommand(property, command);
